@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -19,11 +20,16 @@ void print_help() {
     std::cout << "Usage: mygrator <mysql_host> <mysql_user> <mysql_pass> <mysql_schema> [options]" << std::endl;
     std::cout << std::endl;
     std::cout << "ABOUT" << std::endl;
-    std::cout << "MyGrator is a very basic database migrations tool for MySQL. It looks for SQL files in a folder and executes them one by one and saves the history in the database. If a migration fails, the tool will stop running and report the migration that has failed." << std::endl;
+    std::cout <<
+            "MyGrator is a very basic database migrations tool for MySQL. It looks for SQL files in a folder and executes them one by one and saves the history in the database. If a migration fails, the tool will stop running and report the migration that has failed."
+            << std::endl;
     std::cout << std::endl;
     std::cout << "OPTIONS" << std::endl;
-    std::cout << "-p        The migration folder. If not specified the current working directory will be used." << std::endl;
-    std::cout << "-t        The migration table name. If not specified the default will be used which is '__migrations'." << std::endl;
+    std::cout << "-p        The migration folder. If not specified the current working directory will be used." <<
+            std::endl;
+    std::cout <<
+            "-t        The migration table name. If not specified the default will be used which is '__migrations'." <<
+            std::endl;
 }
 
 bool parse_args(int argc, char **argv, Config &config) {
@@ -59,14 +65,18 @@ bool parse_args(int argc, char **argv, Config &config) {
     return true;
 }
 
-sql::Connection *connect(std::string &host, std::string &user, std::string &pass, std::string &schema) {
+sql::Connection *connect(const std::string &host, const std::string &user, const std::string &pass, const std::string &schema) {
     sql::mysql::MySQL_Driver *driver = sql::mysql::get_mysql_driver_instance();
+    const char* host_cstr = host.c_str();
+    const char* user_cstr = user.c_str();
+    const char* pass_cstr = pass.c_str();
+    const char* schema_cstr = schema.c_str();
 
     sql::ConnectOptionsMap options;
-    options["hostName"] = host;
-    options["userName"] = user;
-    options["password"] = pass;
-    options["schema"] = schema;
+    options["hostName"] = host_cstr;
+    options["userName"] = user_cstr;
+    options["password"] = pass_cstr;
+    options["schema"] = schema_cstr;
     options["CLIENT_MULTI_STATEMENTS"] = true;
 
     sql::Connection *conn = driver->connect(options);
@@ -83,9 +93,9 @@ void close(sql::Connection *conn) {
 bool init_migrations(Config &config) {
     try {
         std::string sql_create = "CREATE TABLE IF NOT EXISTS " + config.mg_table + " ("
-                                                                                   "id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,"
-                                                                                   "name VARCHAR(255) NOT NULL"
-                                                                                   ");";
+                                 "id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,"
+                                 "name VARCHAR(255) NOT NULL"
+                                 ");";
 
         sql::Connection *conn = connect(config.db_host, config.db_user, config.db_pass, config.db_schema);
         sql::Statement *stmt = conn->createStatement();
@@ -103,13 +113,14 @@ bool init_migrations(Config &config) {
     return true;
 }
 
-bool migration_exist(Config &config, std::string mg_name) {
+bool migration_exist(Config &config, const std::string &mg_name) {
     bool exists = false;
 
     try {
         sql::Connection *conn = connect(config.db_host, config.db_user, config.db_pass, config.db_schema);
         sql::Statement *stmt = conn->createStatement();
-        sql::ResultSet *res = stmt->executeQuery("SELECT * FROM " + config.mg_table + " WHERE name = '" + mg_name + "'");
+        sql::ResultSet *res = stmt->
+                executeQuery("SELECT * FROM " + config.mg_table + " WHERE name = '" + mg_name + "'");
 
         if (res->next()) {
             exists = true;
@@ -122,7 +133,7 @@ bool migration_exist(Config &config, std::string mg_name) {
         delete res;
         delete stmt;
         delete conn;
-    } catch (sql::SQLException& e) {
+    } catch (sql::SQLException &e) {
         std::cerr << e.what() << std::endl;
         return true;
     }
@@ -130,7 +141,7 @@ bool migration_exist(Config &config, std::string mg_name) {
     return exists;
 }
 
-bool run_migration(Config &config, std::string name, std::string path) {
+bool run_migration(Config &config, const std::string &name, const fs::path &path) {
     bool success = true;
     std::ifstream file(path);
     std::stringstream buffer;
@@ -155,7 +166,7 @@ bool run_migration(Config &config, std::string name, std::string path) {
 
         delete stmt;
         delete conn;
-    } catch (sql::SQLException& e) {
+    } catch (sql::SQLException &e) {
         std::cerr << e.what() << std::endl;
         success = false;
     }
@@ -163,7 +174,7 @@ bool run_migration(Config &config, std::string name, std::string path) {
     return success;
 }
 
-bool add_migration(Config& config, std::string name) {
+bool add_migration(Config &config, const std::string &name) {
     bool success = true;
 
     try {
@@ -176,7 +187,7 @@ bool add_migration(Config& config, std::string name) {
 
         delete stmt;
         delete conn;
-    } catch (sql::SQLException& e) {
+    } catch (sql::SQLException &e) {
         std::cerr << e.what() << std::endl;
         success = false;
     }
@@ -193,14 +204,14 @@ bool run_migrations(Config &config) {
         return false;
     }
 
-    for (fs::directory_entry dir_entry : dir_it) {
+    for (const fs::directory_entry &dir_entry: dir_it) {
         files.insert(dir_entry.path());
     }
 
-    for (fs::path path: files) {
+    for (const fs::path &path: files) {
         std::string ext = path.extension().string();
         std::string filename = path.filename().string();
-        std::string name = filename.substr(0, filename.find_last_of("."));
+        std::string name = filename.substr(0, filename.find_last_of('.'));
 
         if (ext != ".sql") {
             continue;
@@ -237,7 +248,6 @@ bool run(int argc, char **argv) {
         if (!run_migrations(config)) {
             return false;
         }
-
     } catch (sql::SQLException &e) {
         std::cerr << "SQL Error: " << e.what() << std::endl;
         return false;
